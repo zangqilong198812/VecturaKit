@@ -118,6 +118,12 @@ public actor VecturaKit {
     // Get embeddings from the embedder
     let embeddings = try await embedder.embed(texts: texts)
 
+    guard embeddings.count == texts.count else {
+      throw VecturaError.invalidInput(
+        "Embedder returned \(embeddings.count) embedding(s) for \(texts.count) text(s)"
+      )
+    }
+
     // Validate embeddings
     for embedding in embeddings {
       try validateDimension(embedding)
@@ -333,7 +339,8 @@ public actor VecturaKit {
     return HybridSearchEngine(
       vectorEngine: vectorEngine,
       textEngine: bm25Engine,
-      vectorWeight: config.searchOptions.hybridWeight
+      vectorWeight: config.searchOptions.hybridWeight,
+      bm25NormalizationFactor: config.searchOptions.bm25NormalizationFactor
     )
   }
 
