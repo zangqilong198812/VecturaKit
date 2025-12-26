@@ -6,7 +6,19 @@ import Foundation
 @available(macOS 15.0, iOS 18.0, tvOS 18.0, visionOS 2.0, watchOS 11.0, *)
 public actor SwiftEmbedder {
 
+  /// Configuration for how models are fetched from Hugging Face or custom hosts.
+  public struct ModelLoadingOptions: Sendable {
+    public let downloadBase: URL?
+    public let useBackgroundSession: Bool
+
+    public init(downloadBase: URL? = nil, useBackgroundSession: Bool = false) {
+      self.downloadBase = downloadBase
+      self.useBackgroundSession = useBackgroundSession
+    }
+  }
+
   private let modelSource: VecturaModelSource
+  private let loadingOptions: ModelLoadingOptions
   private var bertModel: Bert.ModelBundle?
   private var model2vecModel: Model2Vec.ModelBundle?
   private var staticEmbeddingsModel: StaticEmbeddings.ModelBundle?
@@ -14,9 +26,15 @@ public actor SwiftEmbedder {
 
   /// Initializes a SwiftEmbedder with the specified model source.
   ///
-  /// - Parameter modelSource: The source from which to load the embedding model.
-  public init(modelSource: VecturaModelSource = .default) {
+  /// - Parameters:
+  ///   - modelSource: The source from which to load the embedding model.
+  ///   - loadingOptions: Extra options for downloading remote models.
+  public init(
+    modelSource: VecturaModelSource = .default,
+    loadingOptions: ModelLoadingOptions = .init()
+  ) {
     self.modelSource = modelSource
+    self.loadingOptions = loadingOptions
   }
 }
 
@@ -123,11 +141,20 @@ extension SwiftEmbedder: VecturaEmbedder {
     }
 
     if isModel2VecModel(modelSource) {
-      model2vecModel = try await Model2Vec.loadModelBundle(from: modelSource)
+      model2vecModel = try await Model2Vec.loadModelBundle(
+        from: modelSource,
+        loadingOptions: loadingOptions
+      )
     } else if isStaticEmbeddingsModel(modelSource) {
-      staticEmbeddingsModel = try await StaticEmbeddings.loadModelBundle(from: modelSource)
+      staticEmbeddingsModel = try await StaticEmbeddings.loadModelBundle(
+        from: modelSource,
+        loadingOptions: loadingOptions
+      )
     } else {
-      bertModel = try await Bert.loadModelBundle(from: modelSource)
+      bertModel = try await Bert.loadModelBundle(
+        from: modelSource,
+        loadingOptions: loadingOptions
+      )
     }
   }
 
@@ -177,12 +204,21 @@ extension SwiftEmbedder: VecturaEmbedder {
 @available(macOS 15.0, iOS 18.0, tvOS 18.0, visionOS 2.0, watchOS 11.0, *)
 extension Bert {
 
-  static func loadModelBundle(from source: VecturaModelSource) async throws -> Bert.ModelBundle {
+  static func loadModelBundle(
+    from source: VecturaModelSource,
+    loadingOptions: SwiftEmbedder.ModelLoadingOptions,
+    loadConfig: LoadConfig = .init()
+  ) async throws -> Bert.ModelBundle {
     switch source {
     case .id(let modelId, _):
-      try await loadModelBundle(from: modelId)
+      try await loadModelBundle(
+        from: modelId,
+        downloadBase: loadingOptions.downloadBase,
+        useBackgroundSession: loadingOptions.useBackgroundSession,
+        loadConfig: loadConfig
+      )
     case .folder(let url, _):
-      try await loadModelBundle(from: url)
+      try await loadModelBundle(from: url, loadConfig: loadConfig)
     }
   }
 }
@@ -190,12 +226,21 @@ extension Bert {
 @available(macOS 15.0, iOS 18.0, tvOS 18.0, visionOS 2.0, watchOS 11.0, *)
 extension Model2Vec {
 
-  static func loadModelBundle(from source: VecturaModelSource) async throws -> Model2Vec.ModelBundle {
+  static func loadModelBundle(
+    from source: VecturaModelSource,
+    loadingOptions: SwiftEmbedder.ModelLoadingOptions,
+    loadConfig: LoadConfig = .init()
+  ) async throws -> Model2Vec.ModelBundle {
     switch source {
     case .id(let modelId, _):
-      try await loadModelBundle(from: modelId)
+      try await loadModelBundle(
+        from: modelId,
+        downloadBase: loadingOptions.downloadBase,
+        useBackgroundSession: loadingOptions.useBackgroundSession,
+        loadConfig: loadConfig
+      )
     case .folder(let url, _):
-      try await loadModelBundle(from: url)
+      try await loadModelBundle(from: url, loadConfig: loadConfig)
     }
   }
 }
@@ -203,12 +248,21 @@ extension Model2Vec {
 @available(macOS 15.0, iOS 18.0, tvOS 18.0, visionOS 2.0, watchOS 11.0, *)
 extension StaticEmbeddings {
 
-  static func loadModelBundle(from source: VecturaModelSource) async throws -> StaticEmbeddings.ModelBundle {
+  static func loadModelBundle(
+    from source: VecturaModelSource,
+    loadingOptions: SwiftEmbedder.ModelLoadingOptions,
+    loadConfig: LoadConfig = .staticEmbeddings
+  ) async throws -> StaticEmbeddings.ModelBundle {
     switch source {
     case .id(let modelId, _):
-      try await loadModelBundle(from: modelId, loadConfig: .staticEmbeddings)
+      try await loadModelBundle(
+        from: modelId,
+        downloadBase: loadingOptions.downloadBase,
+        useBackgroundSession: loadingOptions.useBackgroundSession,
+        loadConfig: loadConfig
+      )
     case .folder(let url, _):
-      try await loadModelBundle(from: url, loadConfig: .staticEmbeddings)
+      try await loadModelBundle(from: url, loadConfig: loadConfig)
     }
   }
 }
