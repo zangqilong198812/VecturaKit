@@ -6,24 +6,24 @@ public actor CustomVecturaEmbedder {
 
   private let embedder: SwiftEmbedder
 
-  /// Initializes the embedder with a remote model ID and custom Hugging Face base URL.
+  /// Initializes the embedder with a remote model ID and custom Hugging Face settings.
   ///
   /// - Parameters:
   ///   - modelId: Identifier of the model to download.
   ///   - type: Optional hint for the model architecture.
-  ///   - downloadBase: Base URL that replaces the default Hugging Face endpoint.
+  ///   - endpoint: Optional Hugging Face endpoint override (e.g., mirror host).
   ///   - useBackgroundSession: Whether downloads should use a background URLSession.
   public init(
     modelId: String,
     type: VecturaModelSource.ModelType? = nil,
-    downloadBase: URL,
+    endpoint: URL? = nil,
     useBackgroundSession: Bool = false
   ) {
     self.embedder = SwiftEmbedder(
       modelSource: .id(modelId, type: type),
       loadingOptions: .init(
-        downloadBase: downloadBase,
-        useBackgroundSession: useBackgroundSession
+        useBackgroundSession: useBackgroundSession,
+        endpoint: endpoint
       )
     )
   }
@@ -32,18 +32,18 @@ public actor CustomVecturaEmbedder {
   ///
   /// - Parameters:
   ///   - modelSource: Source describing either a remote ID or local folder.
-  ///   - downloadBase: Optional base URL override for remote downloads.
+  ///   - endpoint: Optional Hugging Face endpoint override (e.g., mirror host).
   ///   - useBackgroundSession: Whether downloads should use a background URLSession.
   public init(
     modelSource: VecturaModelSource,
-    downloadBase: URL? = nil,
+    endpoint: URL? = nil,
     useBackgroundSession: Bool = false
   ) {
     self.embedder = SwiftEmbedder(
       modelSource: modelSource,
       loadingOptions: .init(
-        downloadBase: downloadBase,
-        useBackgroundSession: useBackgroundSession
+        useBackgroundSession: useBackgroundSession,
+        endpoint: endpoint
       )
     )
   }

@@ -1,4 +1,5 @@
 import CoreML
+import Darwin
 import Embeddings
 import Foundation
 
@@ -10,10 +11,16 @@ public actor SwiftEmbedder {
   public struct ModelLoadingOptions: Sendable {
     public let downloadBase: URL?
     public let useBackgroundSession: Bool
+    public let endpoint: URL?
 
-    public init(downloadBase: URL? = nil, useBackgroundSession: Bool = false) {
+    public init(
+      downloadBase: URL? = nil,
+      useBackgroundSession: Bool = false,
+      endpoint: URL? = nil
+    ) {
       self.downloadBase = downloadBase
       self.useBackgroundSession = useBackgroundSession
+      self.endpoint = endpoint
     }
   }
 
@@ -211,12 +218,14 @@ extension Bert {
   ) async throws -> Bert.ModelBundle {
     switch source {
     case .id(let modelId, _):
-      try await loadModelBundle(
-        from: modelId,
-        downloadBase: loadingOptions.downloadBase,
-        useBackgroundSession: loadingOptions.useBackgroundSession,
-        loadConfig: loadConfig
-      )
+      try await withHubEndpoint(loadingOptions.endpoint) {
+        try await loadModelBundle(
+          from: modelId,
+          downloadBase: loadingOptions.downloadBase,
+          useBackgroundSession: loadingOptions.useBackgroundSession,
+          loadConfig: loadConfig
+        )
+      }
     case .folder(let url, _):
       try await loadModelBundle(from: url, loadConfig: loadConfig)
     }
@@ -233,12 +242,14 @@ extension Model2Vec {
   ) async throws -> Model2Vec.ModelBundle {
     switch source {
     case .id(let modelId, _):
-      try await loadModelBundle(
-        from: modelId,
-        downloadBase: loadingOptions.downloadBase,
-        useBackgroundSession: loadingOptions.useBackgroundSession,
-        loadConfig: loadConfig
-      )
+      try await withHubEndpoint(loadingOptions.endpoint) {
+        try await loadModelBundle(
+          from: modelId,
+          downloadBase: loadingOptions.downloadBase,
+          useBackgroundSession: loadingOptions.useBackgroundSession,
+          loadConfig: loadConfig
+        )
+      }
     case .folder(let url, _):
       try await loadModelBundle(from: url, loadConfig: loadConfig)
     }
@@ -255,14 +266,39 @@ extension StaticEmbeddings {
   ) async throws -> StaticEmbeddings.ModelBundle {
     switch source {
     case .id(let modelId, _):
-      try await loadModelBundle(
-        from: modelId,
-        downloadBase: loadingOptions.downloadBase,
-        useBackgroundSession: loadingOptions.useBackgroundSession,
-        loadConfig: loadConfig
-      )
+      try await withHubEndpoint(loadingOptions.endpoint) {
+        try await loadModelBundle(
+          from: modelId,
+          downloadBase: loadingOptions.downloadBase,
+          useBackgroundSession: loadingOptions.useBackgroundSession,
+          loadConfig: loadConfig
+        )
+      }
     case .folder(let url, _):
       try await loadModelBundle(from: url, loadConfig: loadConfig)
     }
   }
+}
+
+@available(macOS 15.0, iOS 18.0, tvOS 18.0, visionOS 2.0, watchOS 11.0, *)
+private func withHubEndpoint<T>(
+  _ endpoint: URL?,
+  operation: () async throws -> T
+) async throws -> T {
+  guard let endpoint else {
+    return try await operation()
+  }
+
+  let previousValue = getenv("HF_ENDPOINT").flatMap { String(validatingCString: $0) }
+
+  setenv("HF_ENDPOINT", endpoint.absoluteString, 1)
+  defer {
+    if let previousValue {
+      setenv("HF_ENDPOINT", previousValue, 1)
+    } else {
+      unsetenv("HF_ENDPOINT")
+    }
+  }
+
+  return try await operation()
 }
