@@ -218,7 +218,18 @@ extension Bert {
   ) async throws -> Bert.ModelBundle {
     switch source {
     case .id(let modelId, _):
-      try await withHubEndpoint(loadingOptions.endpoint) {
+      if let cachedURL = cachedModelDirectoryIfComplete(
+        for: source,
+        downloadBase: loadingOptions.downloadBase,
+        loadConfig: loadConfig
+      ) {
+        do {
+          return try await loadModelBundle(from: cachedURL, loadConfig: loadConfig)
+        } catch {
+          try? FileManager.default.removeItem(at: cachedURL)
+        }
+      }
+      return try await withHubEndpoint(loadingOptions.endpoint) {
         try await loadModelBundle(
           from: modelId,
           downloadBase: loadingOptions.downloadBase,
@@ -227,7 +238,7 @@ extension Bert {
         )
       }
     case .folder(let url, _):
-      try await loadModelBundle(from: url, loadConfig: loadConfig)
+      return try await loadModelBundle(from: url, loadConfig: loadConfig)
     }
   }
 }
@@ -242,7 +253,18 @@ extension Model2Vec {
   ) async throws -> Model2Vec.ModelBundle {
     switch source {
     case .id(let modelId, _):
-      try await withHubEndpoint(loadingOptions.endpoint) {
+      if let cachedURL = cachedModelDirectoryIfComplete(
+        for: source,
+        downloadBase: loadingOptions.downloadBase,
+        loadConfig: loadConfig
+      ) {
+        do {
+          return try await loadModelBundle(from: cachedURL, loadConfig: loadConfig)
+        } catch {
+          try? FileManager.default.removeItem(at: cachedURL)
+        }
+      }
+      return try await withHubEndpoint(loadingOptions.endpoint) {
         try await loadModelBundle(
           from: modelId,
           downloadBase: loadingOptions.downloadBase,
@@ -251,7 +273,7 @@ extension Model2Vec {
         )
       }
     case .folder(let url, _):
-      try await loadModelBundle(from: url, loadConfig: loadConfig)
+      return try await loadModelBundle(from: url, loadConfig: loadConfig)
     }
   }
 }
@@ -266,7 +288,18 @@ extension StaticEmbeddings {
   ) async throws -> StaticEmbeddings.ModelBundle {
     switch source {
     case .id(let modelId, _):
-      try await withHubEndpoint(loadingOptions.endpoint) {
+      if let cachedURL = cachedModelDirectoryIfComplete(
+        for: source,
+        downloadBase: loadingOptions.downloadBase,
+        loadConfig: loadConfig
+      ) {
+        do {
+          return try await loadModelBundle(from: cachedURL, loadConfig: loadConfig)
+        } catch {
+          try? FileManager.default.removeItem(at: cachedURL)
+        }
+      }
+      return try await withHubEndpoint(loadingOptions.endpoint) {
         try await loadModelBundle(
           from: modelId,
           downloadBase: loadingOptions.downloadBase,
@@ -275,8 +308,79 @@ extension StaticEmbeddings {
         )
       }
     case .folder(let url, _):
-      try await loadModelBundle(from: url, loadConfig: loadConfig)
+      return try await loadModelBundle(from: url, loadConfig: loadConfig)
     }
+  }
+}
+
+@available(macOS 15.0, iOS 18.0, tvOS 18.0, visionOS 2.0, watchOS 11.0, *)
+func cachedModelDirectoryIfComplete(
+  for source: VecturaModelSource,
+  downloadBase: URL?,
+  loadConfig: LoadConfig
+) -> URL? {
+  guard case .id = source else {
+    return nil
+  }
+
+  guard let baseDirectory = resolvedDownloadBase(downloadBase) else {
+    return nil
+  }
+
+  let modelDirectory = baseDirectory
+    .appending(path: "models", directoryHint: .isDirectory)
+    .appending(path: source.description, directoryHint: .isDirectory)
+
+  guard directoryContainsRequiredFiles(modelDirectory, loadConfig: loadConfig) else {
+    return nil
+  }
+
+  return modelDirectory
+}
+
+private func resolvedDownloadBase(_ override: URL?) -> URL? {
+  if let override {
+    return override
+  }
+
+  guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+    return nil
+  }
+
+  return documentsURL.appending(path: "huggingface", directoryHint: .isDirectory)
+}
+
+private func directoryContainsRequiredFiles(
+  _ directory: URL,
+  loadConfig: LoadConfig
+) -> Bool {
+  let fileManager = FileManager.default
+  let configURL = directory.appending(path: loadConfig.modelConfig.configFileName, directoryHint: .notDirectory)
+  let weightsURL = directory.appending(path: loadConfig.modelConfig.weightsFileName, directoryHint: .notDirectory)
+
+  guard fileManager.fileExists(atPath: configURL.path(percentEncoded: false)),
+        fileManager.fileExists(atPath: weightsURL.path(percentEncoded: false)) else {
+    return false
+  }
+
+  guard let tokenizerConfig = loadConfig.tokenizerConfig else {
+    return true
+  }
+
+  return tokenizerFilesExist(tokenizerConfig.data, at: directory) &&
+    tokenizerFilesExist(tokenizerConfig.config, at: directory)
+}
+
+private func tokenizerFilesExist(
+  _ config: TokenizerConfigType,
+  at directory: URL
+) -> Bool {
+  switch config {
+  case .filePath(let path):
+    let fileURL = directory.appending(path: path, directoryHint: .notDirectory)
+    return FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false))
+  case .data:
+    return true
   }
 }
 
