@@ -2,6 +2,7 @@ import CoreML
 import Darwin
 import Embeddings
 import Foundation
+import OSLog
 
 /// An embedder implementation using swift-embeddings library (Bert, Model2Vec, and StaticEmbeddings models).
 @available(macOS 15.0, iOS 18.0, tvOS 18.0, visionOS 2.0, watchOS 11.0, *)
@@ -229,7 +230,9 @@ extension Bert {
           try? FileManager.default.removeItem(at: cachedURL)
         }
       }
-      return try await withHubEndpoint(loadingOptions.endpoint) {
+      return try await loadRemoteModelBundle(
+        endpoint: loadingOptions.endpoint
+      ) {
         try await loadModelBundle(
           from: modelId,
           downloadBase: loadingOptions.downloadBase,
@@ -264,7 +267,9 @@ extension Model2Vec {
           try? FileManager.default.removeItem(at: cachedURL)
         }
       }
-      return try await withHubEndpoint(loadingOptions.endpoint) {
+      return try await loadRemoteModelBundle(
+        endpoint: loadingOptions.endpoint
+      ) {
         try await loadModelBundle(
           from: modelId,
           downloadBase: loadingOptions.downloadBase,
@@ -299,7 +304,9 @@ extension StaticEmbeddings {
           try? FileManager.default.removeItem(at: cachedURL)
         }
       }
-      return try await withHubEndpoint(loadingOptions.endpoint) {
+      return try await loadRemoteModelBundle(
+        endpoint: loadingOptions.endpoint
+      ) {
         try await loadModelBundle(
           from: modelId,
           downloadBase: loadingOptions.downloadBase,
@@ -382,6 +389,61 @@ private func tokenizerFilesExist(
   case .data:
     return true
   }
+}
+
+private let swiftEmbedderLogger = Logger(subsystem: "com.vecturakit", category: "SwiftEmbedder")
+
+@available(macOS 15.0, iOS 18.0, tvOS 18.0, visionOS 2.0, watchOS 11.0, *)
+private func loadRemoteModelBundle<T>(
+  endpoint: URL?,
+  operation: @escaping () async throws -> T
+) async throws -> T {
+  do {
+    return try await withHubEndpoint(endpoint, operation: operation)
+  } catch {
+    let firstError = error
+    guard let endpoint,
+          shouldFallbackToDefaultEndpoint(firstError) else {
+      throw firstError
+    }
+
+    swiftEmbedderLogger.warning(
+      "Custom HF endpoint \(endpoint.absoluteString, privacy: .public) failed with error: \(firstError.localizedDescription, privacy: .public). Falling back to default endpoint."
+    )
+
+    do {
+      return try await withHubEndpoint(nil, operation: operation)
+    } catch {
+      throw firstError
+    }
+  }
+}
+
+private func shouldFallbackToDefaultEndpoint(_ error: Error) -> Bool {
+  if let localized = (error as? LocalizedError)?.errorDescription,
+     let statusCode = extractHTTPStatusCode(from: localized) {
+    return statusCode >= 500
+  }
+
+  let nsError = error as NSError
+  if nsError.domain == NSURLErrorDomain {
+    return true
+  }
+
+  return false
+}
+
+private func extractHTTPStatusCode(from message: String) -> Int? {
+  guard let range = message.range(of: "HTTP error with status code") else {
+    return nil
+  }
+
+  let remainder = message[range.upperBound...]
+  let components = remainder.split(whereSeparator: { !$0.isNumber })
+  guard let first = components.first else {
+    return nil
+  }
+  return Int(first)
 }
 
 @available(macOS 15.0, iOS 18.0, tvOS 18.0, visionOS 2.0, watchOS 11.0, *)
