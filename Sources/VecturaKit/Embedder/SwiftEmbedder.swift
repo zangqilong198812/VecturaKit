@@ -15,7 +15,6 @@ public actor SwiftEmbedder {
     public let endpoint: URL?
     /// Whether the loader should fall back to the default Hugging Face endpoint when the custom endpoint fails.
     public let allowEndpointFallback: Bool
-    public let allowEndpointFallback: Bool
 
     public init(
       downloadBase: URL? = nil,
