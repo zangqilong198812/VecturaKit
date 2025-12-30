@@ -13,15 +13,20 @@ public actor SwiftEmbedder {
     public let downloadBase: URL?
     public let useBackgroundSession: Bool
     public let endpoint: URL?
+    /// Whether the loader should fall back to the default Hugging Face endpoint when the custom endpoint fails.
+    public let allowEndpointFallback: Bool
+    public let allowEndpointFallback: Bool
 
     public init(
       downloadBase: URL? = nil,
       useBackgroundSession: Bool = false,
-      endpoint: URL? = nil
+      endpoint: URL? = nil,
+      allowEndpointFallback: Bool = false
     ) {
       self.downloadBase = downloadBase
       self.useBackgroundSession = useBackgroundSession
       self.endpoint = endpoint
+      self.allowEndpointFallback = allowEndpointFallback
     }
   }
 
@@ -231,7 +236,8 @@ extension Bert {
         }
       }
       return try await loadRemoteModelBundle(
-        endpoint: loadingOptions.endpoint
+        endpoint: loadingOptions.endpoint,
+        allowFallback: loadingOptions.allowEndpointFallback
       ) {
         try await loadModelBundle(
           from: modelId,
@@ -268,7 +274,8 @@ extension Model2Vec {
         }
       }
       return try await loadRemoteModelBundle(
-        endpoint: loadingOptions.endpoint
+        endpoint: loadingOptions.endpoint,
+        allowFallback: loadingOptions.allowEndpointFallback
       ) {
         try await loadModelBundle(
           from: modelId,
@@ -305,7 +312,8 @@ extension StaticEmbeddings {
         }
       }
       return try await loadRemoteModelBundle(
-        endpoint: loadingOptions.endpoint
+        endpoint: loadingOptions.endpoint,
+        allowFallback: loadingOptions.allowEndpointFallback
       ) {
         try await loadModelBundle(
           from: modelId,
@@ -396,13 +404,15 @@ private let swiftEmbedderLogger = Logger(subsystem: "com.vecturakit", category: 
 @available(macOS 15.0, iOS 18.0, tvOS 18.0, visionOS 2.0, watchOS 11.0, *)
 private func loadRemoteModelBundle<T>(
   endpoint: URL?,
+  allowFallback: Bool,
   operation: @escaping () async throws -> T
 ) async throws -> T {
   do {
     return try await withHubEndpoint(endpoint, operation: operation)
   } catch {
     let firstError = error
-    guard let endpoint,
+    guard allowFallback,
+          let endpoint,
           shouldFallbackToDefaultEndpoint(firstError) else {
       throw firstError
     }
